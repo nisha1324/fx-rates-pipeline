@@ -5,12 +5,14 @@ import pandas as pd
 
 from pipeline.config import ROOT
 from pipeline.load import SCHEMA
+from report.build import ensure_math
 
 SQL = ROOT / "sql"
 
 
 def make_db(rows):
     conn = sqlite3.connect(":memory:")
+    ensure_math(conn)
     conn.executescript(SCHEMA)
     conn.executemany("INSERT INTO fx_rates VALUES (?, 'AUD', ?, ?)", rows)
     return conn
@@ -29,3 +31,11 @@ def test_budget_variance_uses_previous_december():
     row = df.set_index("month").loc["2024-01"]
     # Budget 200,000 AUD vs actual 160,000 AUD: 40,000 saved.
     assert row["budget_rate"] == 0.5 and row["variance_aud"] == 40_000
+
+
+def test_ensure_math_fallback_matches_python():
+    import math
+    conn = sqlite3.connect(":memory:")
+    ensure_math(conn)
+    ln, root = conn.execute("SELECT LN(2.0), SQRT(252)").fetchone()
+    assert abs(ln - math.log(2.0)) < 1e-12 and abs(root - math.sqrt(252)) < 1e-12

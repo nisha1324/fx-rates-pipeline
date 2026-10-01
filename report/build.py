@@ -1,4 +1,5 @@
 """Build the FX report: run the SQL in sql/, write results/REPORT.md and charts."""
+import math
 import sqlite3
 
 import matplotlib
@@ -15,6 +16,15 @@ USD_SPEND = 100_000  # illustrative monthly USD supplier spend
 
 plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False,
                      "axes.grid": True, "grid.alpha": 0.3, "figure.dpi": 110})
+
+
+def ensure_math(conn: sqlite3.Connection) -> None:
+    """Register LN/SQRT if this SQLite build lacks the math extension (some CI runners)."""
+    try:
+        conn.execute("SELECT LN(1), SQRT(1)")
+    except sqlite3.OperationalError:
+        conn.create_function("LN", 1, math.log, deterministic=True)
+        conn.create_function("SQRT", 1, math.sqrt, deterministic=True)
 
 
 def query(conn, name: str, **params) -> pd.DataFrame:
@@ -67,6 +77,7 @@ def chart_budget(budget: pd.DataFrame) -> None:
 def main() -> None:
     CHART_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
+        ensure_math(conn)
         strength = query(conn, "01_aud_strength.sql")
         vol = query(conn, "02_volatility.sql")
         budget = query(conn, "03_budget_variance.sql", usd_spend=USD_SPEND)
