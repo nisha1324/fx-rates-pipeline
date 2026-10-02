@@ -2,7 +2,7 @@
 
 [![Daily FX refresh](https://github.com/nisha1324/fx-rates-pipeline/actions/workflows/daily.yml/badge.svg)](https://github.com/nisha1324/fx-rates-pipeline/actions/workflows/daily.yml)
 
-> 🚧 **In progress.** The ETL, the SQL report and the daily GitHub Actions schedule all work. Final recommendations come next.
+**TL;DR.** A self-updating ETL pulls ECB exchange rates daily via GitHub Actions into SQLite, and five SQL queries turn them into an FX-exposure report for an Australian importer. As of 2026-09-30, AUD had gained 23.0% against JPY but lost 7.1% against GBP since January 2023. On USD 100k a month of invoices, a "set it in December" budget rate missed by **22.8k to 76.5k AUD a year**. Re-forecasting each quarter would have cut the average monthly miss by **43%** (4,474 → 2,534 AUD).
 
 ## Why
 An Australian business that buys from suppliers in the US, China or Europe, or bills clients in India or Singapore, carries **currency risk**. A 5% move in AUD/USD changes the landed cost of every US invoice by 5%. Finance teams need a reliable, always-current rate history to price quotes, set budget rates and see how much they are exposed.
@@ -31,7 +31,7 @@ Frankfurter API ──► extract.py ──► transform.py ──► load.py �
 | **Transient failures** | 3 attempts with exponential backoff. |
 
 ## Report: what the rates say (snapshot: data to 2026-09-30)
-`python -m report.build` runs the four queries in [`sql/`](sql/) against the store and writes [`results/REPORT.md`](results/REPORT.md) plus the charts below. The daily Action regenerates the report and charts, so they move a little each day. The figures quoted in this section are a fixed snapshot as of 2026-09-30.
+`python -m report.build` runs the five queries in [`sql/`](sql/) against the store and writes [`results/REPORT.md`](results/REPORT.md) plus the charts below. The daily Action regenerates the report and charts, so they move a little each day. The figures quoted in this section are a fixed snapshot as of 2026-09-30.
 
 **1. AUD strength** (`sql/01_aud_strength.sql`). Since 2023-01-02, AUD buys **23.0% more JPY**, 18.5% more INR, 14.8% more NZD and 2.4% more USD. It buys **7.1% less GBP**, 3.7% less EUR and 2.5% less SGD, so UK and European suppliers now cost more in AUD. Japanese and Indian suppliers cost less.
 
@@ -52,6 +52,19 @@ Frankfurter API ──► extract.py ──► transform.py ──► load.py �
 The swing between single months ran from −8,032 AUD (Dec 2024) to +11,328 AUD (May 2026). September 2026 runs to the 30th.
 
 ![Budget variance](results/charts/03_budget_variance_usd.png)
+
+**4. Annual vs quarterly budget rate** (`sql/05_budget_policy.sql`). This tests the obvious fix: reset the budget rate every quarter to the previous month's average (Dec for Q1, Mar for Q2, Jun for Q3, Sep for Q4) instead of once a year. Each policy is scored on its absolute monthly miss on USD 100k of invoices (Jan 2024 – Sep 2026, 33 months).
+
+| Year | Annual policy, total miss | Quarterly policy, total miss |
+|---|---|---|
+| 2024 | 28,236 AUD | 32,572 AUD (worse) |
+| 2025 | 42,857 AUD | 21,199 AUD |
+| 2026 (Jan–Sep) | 76,533 AUD | 29,863 AUD |
+| **Mean per month** | **4,474 AUD** | **2,534 AUD (−43%)** |
+
+Quarterly re-forecasting helps most when AUD trends steadily (2025–26). It is *not* always better: in late 2024 AUD fell sharply right after the September reset, and the Q4 rate missed by 10,073 AUD in December. A more frequent forecast cuts the error, but it doesn't remove the risk.
+
+![Budget policy](results/charts/04_budget_policy.png)
 
 **So what for the business?** Even a simple budget-rate policy is off by tens of thousands of AUD a year on a modest USD spend, and the error changes sign from year to year. That argues for (a) re-forecasting the budget rate quarterly rather than annually, (b) hedging a share of committed USD and JPY payables, where volatility is highest, and (c) reviewing GBP/EUR supplier pricing, since AUD has weakened against both.
 
@@ -80,8 +93,27 @@ Runner SQLite builds don't always include the `LN`/`SQRT` math functions that th
 
 **So what for the business?** Finance gets a rate history and an exposure report that update themselves, with no server to run and no cost, since a public repo gets free Actions minutes. Every refresh is versioned in git, so you can always see which rates a past quote or budget was based on.
 
+## Recommendations
+Each one is tied to a measured figure above. The numbers come from the 2026-09-30 snapshot.
+
+| # | Recommendation | Evidence | Owner |
+|---|---|---|---|
+| 1 | **Re-forecast the USD budget rate quarterly**, not annually | Mean monthly miss falls from 4,474 to 2,534 AUD (−43%); the annual miss reached 76.5k AUD in Jan–Sep 2026 | FP&A |
+| 2 | **Hedge part of committed USD/JPY payables** (e.g. forwards on 50% of the next quarter) | Re-forecasting alone still missed by 10k AUD in a single month (Dec 2024); JPY 11.5% and USD 9.7% annual volatility are the highest pairs | Treasury / CFO |
+| 3 | **Renegotiate or reprice GBP- and EUR-denominated supplier contracts** | AUD −7.1% vs GBP and −3.7% vs EUR since Jan 2023, so those costs rose with no change in supplier price | Procurement |
+| 4 | **Consider shifting sourcing toward JPY/INR-priced suppliers** where quality allows | AUD +23.0% vs JPY and +18.5% vs INR | Procurement |
+| 5 | **Quote NZD clients with thinner FX buffers** than USD/JPY clients | AUD/NZD is the calmest pair (4.7% a year, worst day −1.22%) | Sales / Finance |
+| 6 | **Use the git history of `data/` as the audit trail** for which rate a quote or budget used | Every daily refresh is a dated commit | Finance ops |
+
+## Limitations
+- ECB **reference** rates are mid-market fixes at about 16:00 CET. Bank or payment-provider rates include a spread, so real costs are slightly higher.
+- The importer (USD 100k a month, flat) is illustrative, not real company data. Real payables are lumpy and often already partly hedged.
+- Monthly **average** rates are used. A business paying on specific dates will see different numbers.
+- History starts in January 2023, which covers only about three budget cycles. Treat the −43% as directional, not as a guarantee.
+- The live `results/REPORT.md` includes the current partial month, so its numbers drift from the snapshot quoted here.
+
 ## Roadmap
 - [x] Extract / transform / validate / load with an audit log and tests
 - [x] SQL + chart report: AUD strength by currency, volatility, budget-rate variance for an importer
 - [x] GitHub Actions: scheduled daily run that commits new rates and refreshes the report
-- [ ] Business findings and recommendations
+- [x] Business findings and recommendations (annual vs quarterly budget-rate test)
