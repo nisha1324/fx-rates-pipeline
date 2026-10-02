@@ -39,3 +39,13 @@ def test_ensure_math_fallback_matches_python():
     ensure_math(conn)
     ln, root = conn.execute("SELECT LN(2.0), SQRT(252)").fetchone()
     assert abs(ln - math.log(2.0)) < 1e-12 and abs(root - math.sqrt(252)) < 1e-12
+
+
+def test_quarterly_policy_uses_month_before_quarter():
+    conn = make_db([("2023-12-01", "USD", 0.50), ("2024-03-01", "USD", 0.80),
+                    ("2024-05-01", "USD", 0.625)])
+    df = pd.read_sql_query((SQL / "05_budget_policy.sql").read_text(), conn,
+                           params={"usd_spend": 100_000}).set_index("month")
+    may = df.loc["2024-05"]
+    # Annual budget uses Dec (0.50), quarterly uses Mar (0.80); actual 0.625 -> 160,000 AUD.
+    assert may["annual_error_aud"] == 40_000 and may["quarterly_error_aud"] == -35_000

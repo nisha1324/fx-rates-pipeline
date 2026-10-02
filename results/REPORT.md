@@ -73,3 +73,14 @@ Budget rate = average AUD/USD of the previous December. Positive = cheaper than 
 | 2026-08 |        0.664  |        0.7102 |            150600 |            140810 |           9790 |
 | 2026-09 |        0.664  |        0.7122 |            150600 |            140408 |          10191 |
 | 2026-10 |        0.664  |        0.695  |            150600 |            143875 |           6725 |
+
+## 4. Annual vs quarterly budget rate (`sql/05_budget_policy.sql`)
+Quarterly = average AUD/USD of the month before each quarter starts. Errors are absolute AUD misses per month.
+
+Mean monthly miss, all months: annual 4,540 AUD, quarterly 2,562 AUD.
+
+|   year |   annual_error_aud_abs_sum |   annual_error_aud_abs_mean |   annual_error_aud_abs_max |   quarterly_error_aud_abs_sum |   quarterly_error_aud_abs_mean |   quarterly_error_aud_abs_max |
+|-------:|---------------------------:|----------------------------:|---------------------------:|------------------------------:|-------------------------------:|------------------------------:|
+|   2024 |                      28236 |                        2353 |                       8032 |                         32572 |                           2714 |                         10073 |
+|   2025 |                      42857 |                        3571 |                       7113 |                         21199 |                           1767 |                          4881 |
+|   2026 |                      83258 |                        8326 |                      11328 |                         33329 |                           3333 |                          8834 |
